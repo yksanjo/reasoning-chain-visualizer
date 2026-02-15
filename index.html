@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reasoning Chain Visualizer - Step-by-Step Agent Decision Tracing</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: #1a2332;
+            --bg-card-hover: #243044;
+            --text-primary: #f0f4f8;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+            --border-color: #2d3748;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .header-title h1 {
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--accent-cyan);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .container {
+            padding: 32px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+            padding: 20px 24px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .stat-info .value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .stat-info .label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Chain Timeline */
+        .chain-timeline {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 32px;
+        }
+
+        .chain-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .chain-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .chain-controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--accent-cyan), var(--accent-purple));
+        }
+
+        .timeline-step {
+            position: relative;
+            padding: 24px;
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            border-left: 4px solid var(--accent-cyan);
+            transition: all 0.3s ease;
+        }
+
+        .timeline-step:hover {
+            background: var(--bg-card-hover);
+            transform: translateX(8px);
+        }
+
+        .timeline-step::before {
+            content: '';
+            position: absolute;
+            left: -33px;
+            top: 28px;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            border: 3px solid var(--bg-primary);
+        }
+
+        .timeline-step.active::before {
+            background: var(--accent-green);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .step-number {
+            font-size: 12px;
+            color: var(--accent-cyan);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 8px 0;
+        }
+
+        .step-content {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .step-metrics {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .metric-icon {
+            font-size: 14px;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .confidence-bar {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .confidence-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .confidence-track {
+            height: 8px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .confidence-fill.high { background: var(--accent-green); }
+        .confidence-fill.medium { background: var(--accent-yellow); }
+        .confidence-fill.low { background: var(--accent-red); }
+
+        /* Visualization Section */
+        .viz-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .viz-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .viz-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .viz-container {
+            height: 240px;
+            position: relative;
+        }
+
+        /* Tokens Flow */
+        .tokens-flow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .token {
+            padding: 6px 12px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            border: 1px solid var(--border-color);
+        }
+
+        .token.input { border-color: var(--accent-blue); }
+        .token.output { border-color: var(--accent-cyan); }
+        .token.think { border-color: var(--accent-purple); }
+
+        /* Memory Trace */
+        .memory-trace {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .memory-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .memory-icon {
+            font-size: 16px;
+        }
+
+        .memory-content {
+            flex: 1;
+        }
+
+        .memory-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .memory-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 1200px) {
+            .viz-grid { grid-template-columns: 1fr; }
+            .stats-bar { flex-wrap: wrap; }
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            .timeline { padding-left: 30px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="logo-icon">🔗</div>
+            <div class="header-title">
+                <h1>Reasoning Chain Visualizer</h1>
+                <p>Step-by-step agent decision tracing & thought process analysis</p>
+            </div>
+        </div>
+        <div class="live-badge">
+            <div class="live-dot"></div>
+            <span>Live Tracing</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-icon" style="background: rgba(6, 182, 212, 0.15);">🔗</div>
+                <div class="stat-info">
+                    <div class="value">12</div>
+                    <div class="label">Chain Steps</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15);">⏱️</div>
+                <div class="stat-info">
+                    <div class="value">247ms</div>
+                    <div class="label">Total Time</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15);">🧠</div>
+                <div class="stat-info">
+                    <div class="value">1,847</div>
+                    <div class="label">Tokens Processed</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.15);">📊</div>
+                <div class="stat-info">
+                    <div class="value">94.2%</div>
+                    <div class="label">Avg Confidence</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chain Timeline -->
+        <div class="chain-timeline">
+            <div class="chain-header">
+                <h3 class="chain-title">📝 Reasoning Chain #RC-4892</h3>
+                <div class="chain-controls">
+                    <button class="btn btn-secondary">⏸️ Pause</button>
+                    <button class="btn btn-primary">📥 Export</button>
+                </div>
+            </div>
+
+            <div class="timeline">
+                <div class="timeline-step">
+                    <div class="step-number">Step 1 of 12</div>
+                    <h4 class="step-title">Query Understanding & Intent Detection</h4>
+                    <div class="step-content">
+                        Analyzed user query to determine intent: "Explain the relationship between quantum entanglement and quantum computing applications." Identified key entities: quantum entanglement, quantum computing. Intent: explanatory/educational.
+                    </div>
+                    <div class="step-metrics">
+                        <div class="metric">
+                            <span class="metric-icon">⏱️</span>
+                            <span class="metric-value">23ms</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">🔄</span>
+                            <span class="metric-value">2 iterations</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">📚</span>
+                            <span class="metric-value">5 sources</span>
+                        </div>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-header">
+                            <span>Confidence</span>
+                            <span>98%</span>
+                        </div>
+                        <div class="confidence-track">
+                            <div class="confidence-fill high" style="width: 98%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timeline-step active">
+                    <div class="step-number">Step 2 of 12</div>
+                    <h4 class="step-title">Knowledge Retrieval & Context Assembly</h4>
+                    <div class="step-content">
+                        Retrieved relevant information from knowledge base. Found 8 relevant documents on quantum physics, 12 on quantum computing applications. Assembled context window with most relevant excerpts.
+                    </div>
+                    <div class="step-metrics">
+                        <div class="metric">
+                            <span class="metric-icon">⏱️</span>
+                            <span class="metric-value">67ms</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">🔄</span>
+                            <span class="metric-value">3 iterations</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">📄</span>
+                            <span class="metric-value">2.4kb context</span>
+                        </div>
+                    </div>
+                    <div class class="confidence-bar">
+                        <div class="confidence-header">
+                            <span>Confidence</span>
+                            <span>95%</span>
+                        </div>
+                        <div class="confidence-track">
+                            <div class="confidence-fill high" style="width: 95%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-number">Step 3 of 12</div>
+                    <h4 class="step-title">Concept Mapping & Relationship Analysis</h4>
+                    <div class="step-content">
+                        Mapped relationships between quantum entanglement concepts and computing applications. Identified key connections: superposition → entanglement → quantum gates → quantum algorithms.
+                    </div>
+                    <div class="step-metrics">
+                        <div class="metric">
+                            <span class="metric-icon">⏱️</span>
+                            <span class="metric-value">45ms</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">🔄</span>
+                            <span class="metric-value">4 iterations</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">🔗</span>
+                            <span class="metric-value">12 relations</span>
+                        </div>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-header">
+                            <span>Confidence</span>
+                            <span>91%</span>
+                        </div>
+                        <div class="confidence-track">
+                            <div class="confidence-fill high" style="width: 91%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-number">Step 4 of 12</div>
+                    <h4 class="step-title">Response Synthesis Strategy</h4>
+                    <div class="step-content">
+                        Determining optimal response structure. Planning to use layered explanation approach: basic concepts → intermediate connections → advanced applications.
+                    </div>
+                    <div class="step-metrics">
+                        <div class="metric">
+                            <span class="metric-icon">⏱️</span>
+                            <span class="metric-value">18ms</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-icon">📝</span>
+                            <span class="metric-value">3 strategies</span>
+                        </div>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-header">
+                            <span>Confidence</span>
+                            <span>89%</span>
+                        </div>
+                        <div class="confidence-track">
+                            <div class="confidence-fill medium" style="width: 89%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualizations -->
+        <div class="viz-grid">
+            <div class="viz-card">
+                <h3 class="viz-title">🧠 Attention Weights</h3>
+                <div class="viz-container">
+                    <canvas id="attentionChart"></canvas>
+                </div>
+            </div>
+            <div class="viz-card">
+                <h3 class="viz-title">📊 Token Distribution</h3>
+                <div class="viz-container">
+                    <canvas id="tokenChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Trace -->
+        <div class="memory-trace">
+            <h3 class="viz-title">💾 Working Memory Trace</h3>
+            <div class="memory-item">
+                <div class="memory-icon">🎯</div>
+                <div class="memory-content">
+                    <div class="memory-title">Goal: Educational Explanation</div>
+                    <div class="memory-text">User seeks to understand relationship between quantum entanglement and computing</div>
+                </div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-icon">📚</div>
+                <div class="memory-content">
+                    <div class="memory-title">Retrieved: Quantum Physics Context</div>
+                    <div class="memory-text">8 documents, 2.4kb relevant content about entanglement principles</div>
+                </div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-icon">🔗</div>
+                <div class="memory-content">
+                    <div class="memory-title">Key Relationships Mapped</div>
+                    <div class="memory-text">superposition → entanglement (12 connections identified)</div>
+                </div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-icon">✍️</div>
+                <div class="memory-content">
+                    <div class="memory-title">Response Plan</div>
+                    <div class="memory-text">Layered approach: basic → intermediate → advanced applications</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Attention Weights Chart
+        new Chart(document.getElementById('attentionChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Query', 'Context1', 'Context2', 'Context3', 'Memory', 'Plan'],
+                datasets: [{
+                    label: 'Attention Weight',
+                    data: [0.35, 0.25, 0.18, 0.12, 0.06, 0.04],
+                    backgroundColor: ['#06b6d4', '#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#64748b' }, grid: { color: '#2d3748' } },
+                    y: { ticks: { color: '#64748b' }, grid: { color: '#2d3748' }, max: 0.5 }
+                }
+            }
+        });
+
+        // Token Distribution Chart
+        new Chart(document.getElementById('tokenChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Input Tokens', 'Output Tokens', 'Think Tokens'],
+                datasets: [{
+                    data: [847, 623, 377],
+                    backgroundColor: ['#3b82f6', '#06b6d4', '#8b5cf6'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', padding: 15 }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
